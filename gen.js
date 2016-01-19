@@ -14,19 +14,8 @@ var Vec3=require("vec3");
 
 function Flatland(game, opts) {
 
-  function generateSimpleChunk() {
-    var chunk=new Chunk();
-
-    for (var x = 0; x < 16;x++) {
-      for (var z = 0; z < 16; z++) {
-        chunk.setBlockType(new Vec3(x, 1, z), x%2==0 ? 1 : 0);
-      }
-    }
-
-    return chunk;
-  }
-
-  this.world=new World(generateSimpleChunk);
+  var diamondSquare=require("diamond-square")({seed:Math.floor(Math.random()*Math.pow(2, 31))});
+  this.world=new World(diamondSquare);
   this.game = game;
 
   this.registry = game.plugins.get('voxel-registry');
@@ -52,7 +41,9 @@ Flatland.prototype.disable = function() {
 Flatland.prototype.missingChunk = function(position) {
   console.log('missingChunk',position);
 
-  if (position[1] > 0) return; // everything above y=0 is air
+  console.log(position[1])
+  var pY=position[1]+2;
+  if (pY < 0) return; // everything below y=0 is air
 
   var blockIndex = this.registry.getBlockIndex(this.block);
   if (!blockIndex) {
@@ -69,13 +60,13 @@ Flatland.prototype.missingChunk = function(position) {
   var voxels = voxelsPadded.lo(h,h,h).hi(width,width,width);
   var parts=[[0,0],[0,1],[1,0],[1,1]];
   Promise.all(parts.map(part => {
-    this.world.getColumn(position[0]*32+part[0]*16,position[2]*32+part[1]*16)
+    this.world.getColumn(position[0]*2+part[0],position[2]*2+part[1])
       .then(column => {
         var pos=new Vec3(0,0,0);
         let x,y,z;
         for (pos.x = 0,x=part[0]*16; pos.x < 16, x<(part[0]+1)*16; ++pos.x,x++) {
           for (pos.z = 0,z=part[1]*16; pos.z < 16, z<(part[1]+1)*16; ++pos.z,z++) {
-            for (pos.y = position[1]*this.game.chunkSize,y=0; pos.y < (position[1]+1)*this.game.chunkSize,y<this.game.chunkSize; ++pos.y,y++) {
+            for (pos.y = pY*this.game.chunkSize,y=0; pos.y < (pY+1)*this.game.chunkSize,y<this.game.chunkSize; ++pos.y,y++) {
               voxels.set(x,y,z, column.getBlockType(pos)==0 ? 0 : blockIndex);
             }
           }
