@@ -24,6 +24,8 @@ function Flatland(game, opts) {
   this.block = opts.block;
   if (!this.block) throw new Error('voxel-flatland requires block option');
 
+  this.currentMissing=Promise.resolve();
+
   this.enable();
 }
 
@@ -35,50 +37,52 @@ Flatland.prototype.disable = function() {
   this.game.voxels.removeListener('missingChunk', this.onMissingChunk);
 };
 
+function sleep(ms){
+  return new Promise(cb => setTimeout(cb,ms));
+}
 
 
 
 Flatland.prototype.missingChunk = function(position) {
   console.log('missingChunk',position);
+  this.currentMissing=this.currentMissing.then(() => sleep(25)).then(() => {
+    var pY=position[1]+2;
+    if (pY < 0) return; // everything below y=0 is air
 
-  console.log(position[1])
-  var pY=position[1]+2;
-  if (pY < 0) return; // everything below y=0 is air
+    var blockIndex = this.registry.getBlockIndex(this.block);
+    if (!blockIndex) {
+      throw new Error('voxel-flatland unable to find block of name: '+this.block);
+    }
 
-  var blockIndex = this.registry.getBlockIndex(this.block);
-  if (!blockIndex) {
-    throw new Error('voxel-flatland unable to find block of name: '+this.block);
-  };
+    var width = this.game.chunkSize;
+    var pad = this.game.chunkPad;
+    var arrayType = this.game.arrayType;
 
-  var width = this.game.chunkSize;
-  var pad = this.game.chunkPad;
-  var arrayType = this.game.arrayType;
-
-  var buffer = new ArrayBuffer((width+pad) * (width+pad) * (width+pad) * arrayType.BYTES_PER_ELEMENT);
-  var voxelsPadded = ndarray(new arrayType(buffer), [width+pad, width+pad, width+pad]);
-  var h = pad >> 1;
-  var voxels = voxelsPadded.lo(h,h,h).hi(width,width,width);
-  var parts=[[0,0],[0,1],[1,0],[1,1]];
-  Promise.all(parts.map(part => {
-    this.world.getColumn(position[0]*2+part[0],position[2]*2+part[1])
-      .then(column => {
-        var pos=new Vec3(0,0,0);
-        let x,y,z;
-        for (pos.x = 0,x=part[0]*16; pos.x < 16, x<(part[0]+1)*16; ++pos.x,x++) {
-          for (pos.z = 0,z=part[1]*16; pos.z < 16, z<(part[1]+1)*16; ++pos.z,z++) {
-            for (pos.y = pY*this.game.chunkSize,y=0; pos.y < (pY+1)*this.game.chunkSize,y<this.game.chunkSize; ++pos.y,y++) {
-              voxels.set(x,y,z, column.getBlockType(pos)==0 ? 0 : blockIndex);
+    var buffer = new ArrayBuffer((width+pad) * (width+pad) * (width+pad) * arrayType.BYTES_PER_ELEMENT);
+    var voxelsPadded = ndarray(new arrayType(buffer), [width+pad, width+pad, width+pad]);
+    var h = pad >> 1;
+    var voxels = voxelsPadded.lo(h,h,h).hi(width,width,width);
+    var parts=[[0,0],[0,1],[1,0],[1,1]];
+    return Promise.all(parts.map(part => {
+        this.world.getColumn(position[0]*2+part[0],position[2]*2+part[1])
+          .then(column => {
+          var pos=new Vec3(0,0,0);
+          let x,y,z;
+          for (pos.x = 0,x=part[0]*16; pos.x < 16, x<(part[0]+1)*16; ++pos.x,x++) {
+            for (pos.z = 0,z=part[1]*16; pos.z < 16, z<(part[1]+1)*16; ++pos.z,z++) {
+              for (pos.y = pY*this.game.chunkSize,y=0; pos.y < (pY+1)*this.game.chunkSize,y<this.game.chunkSize; ++pos.y,y++) {
+                voxels.set(x,y,z, column.getBlockType(pos)==0 ? 0 : blockIndex);
+              }
             }
           }
-        }
+        });
+      }))
+      .then(() => {
+        var chunk = voxelsPadded;
+        chunk.position = position;
+
+        console.log('about to showChunk',chunk.position);
+        this.game.showChunk(chunk);
       });
-  }))
-  .then(() => {
-    var chunk = voxelsPadded;
-    chunk.position = position;
-
-    console.log('about to showChunk',chunk);
-    this.game.showChunk(chunk);
   });
-
 };
